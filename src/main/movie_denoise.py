@@ -4,12 +4,12 @@ from tqdm import tqdm
 from glob import glob
 import os
 import sys
-from Modules.noise2noise import Noise2Noise
 
 
 module_dir = os.path.abspath("../")
 sys.path.append(module_dir)
 
+from Modules.noise2noise import Noise2Noise
 from Modules.generate_movie import generate_movie
 
 
@@ -45,13 +45,13 @@ if __name__ == "__main__":
         model_dir = "../../Resources/AI/model_dir",
         device=device
     )
-    trainer.load_model('best_model.pth')
+    trainer.load_model('test_model.pth')
 
 
     # 各変数の初期設定
-    img_folder = "../../Resources/Input and Output/affine"
-    out_folder = "../../Resources/Input and Output/denoise"
-    movie_path = "../../Resources/Input and Output/affine_and_denoise.mp4"
+    img_folder = "../../Resources/Input and Output/affine3"
+    out_folder = "../../Resources/Input and Output/denoise_2"
+    movie_path = "../../Resources/Input and Output/affine_and_denoise_2.mp4"
     os.makedirs(out_folder, exist_ok=True)
 
     # 動画から連番画像を生成する
