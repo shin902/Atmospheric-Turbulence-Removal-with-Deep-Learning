@@ -136,3 +136,8 @@ if __name__ == '__main__':
     output_path = "../../Resources/Input and Output/output/S__31277060_d.jpg"
 
     ellipse_to_circle(input_path, output_path)
+
+
+
+
+
