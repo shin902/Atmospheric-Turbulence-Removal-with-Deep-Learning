@@ -6,11 +6,10 @@ readme = "README.md"
 authors = [
     { name = "shin902", email = "shinokabe7@outlook.jp" }
 ]
-requires-python = ">=3.13"
+requires-python = ">=3.9"
 dependencies = [
     "flet>=0.27.6",
     "ipywidgets>=8.1.5",
-    "numpy>=2.2.4",
     "opencv-python>=4.11.0.86",
     "torch>=2.6.0",
     "torchaudio>=2.6.0",
@@ -26,7 +25,11 @@ build-backend = "hatchling.build"
 
 [dependency-groups]
 dev = [
-    "matplotlib>=3.10.1",
+    "matplotlib>=3.9.4",
     "pyinstaller>=6.12.0",
     "tqdm>=4.67.1",
 ]
+
+
+[tool.hatch.build.targets.wheel]
+packages = ["src"]
