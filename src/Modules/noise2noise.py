@@ -14,6 +14,8 @@ import csv
 train_losses = []
 valid_losses = []
 
+model_csv_name = "8-2_model"
+
 
 
 # Double Convolution block for UNet
@@ -230,8 +232,8 @@ class Noise2Noise:
             # Save best model
             if valid_loss < best_valid_loss:
                 best_valid_loss = valid_loss
-                self.save_model('best_model.pth')
-        self.save_losses_to_csv('losses-best.csv') # 追記
+                self.save_model(model_csv_name + '.pth')
+        self.save_losses_to_csv(model_csv_name + '.csv') # 追記
 
 
     def validate(self):
@@ -299,6 +301,7 @@ class Noise2Noise:
 if __name__ == "__main__":
     # Setup device
     device = torch.device("mps" if torch.mps.is_available() else "cpu")
+    net = UNet()
 
     # Initialize trainer
     trainer = Noise2Noise(
@@ -310,10 +313,18 @@ if __name__ == "__main__":
 
     # Train model
     # trainer.train(epochs=1000)
-    trainer.load_model('bright_model.pth')
+    trainer.load_model('8-2_model.pth')
 
     # Denoise a single image
-    trainer.denoise_image("../../Resources/Images/19_57_44/001.jpg", "../../Resources/Input and Output/output/001-19_57_44.jpg")
+    trainer.denoise_image("../../Resources/Images/19_57_44/001.jpg", "../../Resources/Input and Output/output/001-19_57_44_8.2.jpg")
+
+    params = 0
+    for p in net.parameters():
+        if p.requires_grad:
+            params += p.numel()
+
+    print(params)  # 121898
+
 
 """
     img_path = Path("./img")
