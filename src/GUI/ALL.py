@@ -431,14 +431,20 @@ def main(page: ft.Page):
         output_path.mkdir(parents=True, exist_ok=True)  # Ensure output directory exists
         use_affine = affine_checkbox.value or False  # チェックボックスの状態を取得
 
-        device = torch.device("mps") if torch.backends.mps.is_available() else "cpu"  # Use MPS if available
+        if (torch.backends.mps.is_available()):
+            device = torch.device("mps")
+        elif torch.backends.cuda.is_available():
+            device = torch.device("cuda")
+        else:
+            device = torch.device("cpu")
+
         noise_reducer = Noise2Noise(
-            train_dir=input_dir,  # train_dir and valid_dir are not actually used in denoise_image function
-            valid_dir=input_dir,  # but are required for Noise2Noise class initialization
-            model_dir="model",
+            train_dir = "./train_data",  # train_dir and valid_dir are not actually used in denoise_image function
+            valid_dir = "./valid_data",  # but are required for Noise2Noise class initialization
+            model_dir = ".//models",
             device=device
         )
-        noise_reducer.load_model("noise2noise_model.pth")  # Assuming a pretrained model exists
+        noise_reducer.load_model("8-2_model.pth")  # Assuming a pretrained model exists
 
         for img_file in input_path.glob("*.jpg"):  # Process only jpg files for simplicity
             output_file = output_path / f"denoised_{img_file.name}"
