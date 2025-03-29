@@ -410,6 +410,7 @@ def main(page: ft.Page):
     input_folder_path = ft.TextField(label="Input Folder")
     output_folder_path = ft.TextField(label="Output Folder")
     temp_folder_path = ft.TextField(label="Temp Folder")
+    models_folder_path = ft.TextField(label="Models Folder")
     affine_checkbox = ft.Checkbox(label="アフィン変換を実行する")
     status_text = ft.Text("")
 
@@ -419,15 +420,17 @@ def main(page: ft.Page):
 
         input_dir = input_folder_path.value
         output_dir = output_folder_path.value
-        temp_dir = temp_folder_path.value # Currently not used in denoise process
+        temp_dir = temp_folder_path.value
+        models_dir = models_folder_path.value # モデルフォルダパスを取得
 
-        if not input_dir or not output_dir:
-            status_text.value = "入力フォルダーと出力フォルダーを指定してください。"
+        if not input_dir or not output_dir or not models_dir:
+            status_text.value = "入力フォルダー、出力フォルダー、モデルフォルダーを指定してください。"
             page.update()
             return
 
         input_path = Path(input_dir)
         output_path = Path(output_dir)
+        models_path = Path(models_dir) # モデルフォルダパスをPathオブジェクトに変換
         output_path.mkdir(parents=True, exist_ok=True)  # Ensure output directory exists
         use_affine = affine_checkbox.value or False  # チェックボックスの状態を取得
 
@@ -441,10 +444,10 @@ def main(page: ft.Page):
         noise_reducer = Noise2Noise(
             train_dir = "./train_data",  # train_dir and valid_dir are not actually used in denoise_image function
             valid_dir = "./valid_data",  # but are required for Noise2Noise class initialization
-            model_dir = ".//models",
+            model_dir = models_dir, # models_dir text field value を使用
             device=device
         )
-        noise_reducer.load_model("8-2_model.pth")  # Assuming a pretrained model exists
+        noise_reducer.load_model("8-2_model.pth")  # モデルファイル名もTextFieldから取得できるように変更するのも良いかもしれません
 
         for img_file in input_path.glob("*.jpg"):  # Process only jpg files for simplicity
             output_file = output_path / f"denoised_{img_file.name}"
@@ -493,6 +496,7 @@ def main(page: ft.Page):
                 input_folder_path,
                 output_folder_path,
                 temp_folder_path,
+                models_folder_path,
                 affine_checkbox,
                 denoise_button,
                 status_text,
