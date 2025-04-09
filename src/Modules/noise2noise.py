@@ -270,7 +270,11 @@ class Noise2Noise:
 
     def load_model(self, filename):
         load_path = self.model_dir / filename
-        checkpoint = torch.load(load_path, weights_only=True)  # weights_only=True を追加
+        checkpoint = torch.load(load_path, weights_only=True, map_location=
+                                "cuda" if torch.cuda.is_available()
+                                else "mps" if torch.backends.mps.is_available()
+                                else "cpu"
+                                )  # weights_only=True を追加
         self.model.load_state_dict(checkpoint['model_state_dict'])
         self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
 
