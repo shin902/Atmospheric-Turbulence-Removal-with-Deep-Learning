@@ -55,7 +55,7 @@ def main(page: ft.Page):
 
         if (torch.backends.mps.is_available()):
             device = torch.device("mps")
-        elif torch.backends.cuda.is_available():
+        elif torch.cuda.is_available():
             device = torch.device("cuda")
         else:
             device = torch.device("cpu")
