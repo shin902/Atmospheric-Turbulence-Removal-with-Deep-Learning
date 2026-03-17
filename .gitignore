@@ -1,3 +1,4 @@
 /Resources/
 .DS_Store
 *.pth
+data/
