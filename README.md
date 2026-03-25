@@ -1,6 +1,52 @@
 # 大気のゆらぎをAIを使用し補正
 - 木星の画像（動画）を、CNN、U-net、Noise2Noise、affine変換を使用して大気の揺らぎを補正するアプリを、Pythonをメインで開発しています。
 
+## セットアップ方法
+
+このプロジェクトはパッケージ管理ツール **uv** を使用しています。  
+以下の手順に従って環境を構築してください。
+
+### 1. uv のインストール
+
+uv は公式のインストールスクリプトを使って簡単にインストールできます。
+
+**Windows（PowerShell）の場合:**
+```powershell
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+```
+
+**macOS / Linux の場合:**
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+インストール後、ターミナル（またはコマンドプロンプト）を再起動してください。  
+`uv --version` と入力してバージョンが表示されれば成功です。
+
+### 2. リポジトリのクローン
+
+```bash
+git clone https://github.com/shin902/Atmospheric-Turbulence-Removal-with-Deep-Learning.git
+cd Atmospheric-Turbulence-Removal-with-Deep-Learning
+```
+
+### 3. 依存関係のインストール
+
+クローンしたフォルダ内で以下のコマンドを実行すると、必要なパッケージが自動でインストールされます。
+
+```bash
+uv sync
+```
+
+これだけで環境構築は完了です。
+
+### 4. アプリケーションの起動（例）
+
+GUI を起動する場合:
+```bash
+uv run python src/GUI/GUI.py
+```
+
 ## 使用技術
 ### 開発関係
 - Python
