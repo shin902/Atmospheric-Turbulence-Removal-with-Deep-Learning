@@ -47,6 +47,62 @@ GUI を起動する場合:
 uv run python src/GUI/GUI.py
 ```
 
+### 5. Windows版セットアップ補足（PowerShell）
+
+Windows では PowerShell で以下を順番に実行すると確実です。
+
+```powershell
+# uv のインストール（未インストールの場合のみ）
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+
+# リポジトリの取得
+git clone https://github.com/shin902/Atmospheric-Turbulence-Removal-with-Deep-Learning.git
+cd Atmospheric-Turbulence-Removal-with-Deep-Learning
+
+# 依存関係のセットアップ
+uv sync
+```
+
+### 6. CLI 実行方法（学習・生成）
+
+このプロジェクトは `uv run python ...` で各スクリプトをCLI実行できます。
+
+#### 学習（Noise2Noise）
+
+`src/Modules/noise2noise.py` の末尾にある `if __name__ == "__main__":` ブロックで学習できます。  
+学習を実行する場合は、このブロック内の以下のコメントアウトを外してください。
+
+```python
+# trainer.train(epochs=1000)
+```
+
+その後、次のコマンドを実行します。
+
+```bash
+uv run python src/Modules/noise2noise.py
+```
+
+※ `noise2noise.py` の `train_dir` / `valid_dir` はサンプル値です。  
+実行ディレクトリとデータ配置に合わせて、実在するパスに変更してから実行してください。
+
+#### 生成（推論）
+
+ノイズ除去付きの連番画像生成＋動画化:
+
+```bash
+uv run python src/main/movie_denoise.py
+```
+
+アフィン補正画像の生成:
+
+```bash
+uv run python src/main/movie_affine.py
+```
+
+実行前に、各スクリプト内のパス設定を手元のデータ配置に合わせて変更してください。
+- `src/main/movie_denoise.py`: `img_folder`, `out_folder`, `movie_path`
+- `src/main/movie_affine.py`: `input_dir`, `output_dir`
+
 ## 使用技術
 ### 開発関係
 - Python
