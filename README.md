@@ -23,12 +23,21 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 インストール後、ターミナル（またはコマンドプロンプト）を再起動してください。  
 `uv --version` と入力してバージョンが表示されれば成功です。
 
-### 2. リポジトリのクローン
+### 2. リポジトリの取得（2つの方法）
+
+#### 方法A: git clone を使う（推奨）
 
 ```bash
 git clone https://github.com/shin902/Atmospheric-Turbulence-Removal-with-Deep-Learning.git
 cd Atmospheric-Turbulence-Removal-with-Deep-Learning
 ```
+
+#### 方法B: Download ZIP を使う（Git未導入向け）
+
+1. GitHubのリポジトリページを開く  
+2. 緑色の **Code** ボタンをクリック  
+3. **Download ZIP** を選択して保存  
+4. ZIPを展開して、展開先フォルダへ移動
 
 ### 3. 依存関係のインストール
 
