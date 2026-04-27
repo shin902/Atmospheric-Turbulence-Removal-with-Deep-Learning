@@ -8,14 +8,13 @@ from pathlib import Path
 from matplotlib import pyplot as plt
 import numpy as np
 from pathlib import Path
-from itertools import combinations
 import csv
 
 
 train_losses = []
 valid_losses = []
 
-model_csv_name = "8-2_model"
+model_csv_name = "fixed_model"
 
 
 
@@ -114,55 +113,52 @@ class UNet(nn.Module):
 class NoisyDataset(Dataset):
     def __init__(self, root_dir, transform=None):
         self.root_dir = Path(root_dir)
-        # 基本的な変換を定義（ToTensorとNormalize）
         self.transform = transforms.Compose([
             transforms.ToTensor(),
-            transforms.Normalize(mean=[0.5, 0.5, 0.5],  # RGB各チャンネルの平均
-                                 std=[0.5, 0.5, 0.5])     # RGB各チャンネルの標準偏差
+            transforms.Normalize(mean=[0.5, 0.5, 0.5],
+                                 std=[0.5, 0.5, 0.5])
         ])
-        self.custom_transform = transform  # 追加の変換が必要な場合用
-        self.image_pairs = []
+        self.custom_transform = transform
+        self.size = (780, 972)
 
-        # Find all image pairs
         if not self.root_dir.exists():
             raise FileNotFoundError(f"Directory {root_dir} not found")
 
-        for folder in self.root_dir.iterdir():
-            if folder.is_dir():
-                noisy_images = sorted(folder.glob('*.jpg'))
-                for img1, img2 in combinations(noisy_images, 2):
-                    self.image_pairs.append((img1, img2))
+        self.all_images = sorted(self.root_dir.rglob('*.jpg'))
+        if not self.all_images:
+            raise FileNotFoundError(f"No images found in {root_dir}")
 
-        self.image_pairs = self.image_pairs[:1000]
+        self.mean_image = self._compute_or_load_mean()
+
+    def _compute_or_load_mean(self):
+        mean_path = self.root_dir / 'mean_image.pt'
+        if mean_path.exists():
+            print(f"平均画像をロード: {mean_path}")
+            return torch.load(mean_path, weights_only=True)
+
+        print(f"平均画像を計算中 ({len(self.all_images)}枚)...")
+        acc = None
+        for path in self.all_images:
+            img = Image.open(str(path)).convert('RGB').resize(self.size, Image.BILINEAR)
+            tensor = self.transform(img)
+            acc = tensor.float() if acc is None else acc + tensor.float()
+        mean = acc / len(self.all_images)
+        torch.save(mean, mean_path)
+        print(f"平均画像を保存: {mean_path}")
+        return mean
 
     def __len__(self):
-        return len(self.image_pairs)
+        return len(self.all_images)
 
     def __getitem__(self, idx):
-        if idx >= len(self.image_pairs):
-            raise IndexError("Index out of bounds")
-
-        img1_path, img2_path = self.image_pairs[idx]
-
-        # Load and convert images
-        input_img = Image.open(str(img1_path)).convert('RGB')
-        target_img = Image.open(str(img2_path)).convert('RGB')
-
-        # Resize images
-        size = (780, 972)
-        input_img = input_img.resize(size, Image.BILINEAR)
-        target_img = target_img.resize(size, Image.BILINEAR)
-
-        # 基本的な変換を適用（ToTensorとNormalize）
+        input_img = Image.open(str(self.all_images[idx])).convert('RGB')
+        input_img = input_img.resize(self.size, Image.BILINEAR)
         input_tensor = self.transform(input_img)
-        target_tensor = self.transform(target_img)
 
-        # 追加の変換がある場合は適用
         if self.custom_transform:
             input_tensor = self.custom_transform(input_tensor)
-            target_tensor = self.custom_transform(target_tensor)
 
-        return input_tensor, target_tensor
+        return input_tensor, self.mean_image
 
 # Training class
 class Noise2Noise:
@@ -321,8 +317,8 @@ if __name__ == "__main__":
     )
 
     # Train model
-    # trainer.train(epochs=1000)
-    trainer.load_model('8-2_model.pth')
+    trainer.train(epochs=1000)
+    # trainer.load_model('8-2_model.pth')
 
     # Denoise a single image
     trainer.denoise_image("../../Resources/Images/19_57_44/001.jpg", "../../Resources/Input and Output/output/001-19_57_44_8.2.jpg")
