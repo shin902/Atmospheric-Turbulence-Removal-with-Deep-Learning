@@ -133,6 +133,8 @@ class NoisyDataset(Dataset):
                 for img1, img2 in combinations(noisy_images, 2):
                     self.image_pairs.append((img1, img2))
 
+        self.image_pairs = self.image_pairs[:1000]
+
     def __len__(self):
         return len(self.image_pairs)
 
