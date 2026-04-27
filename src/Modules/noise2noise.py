@@ -8,6 +8,7 @@ from pathlib import Path
 from matplotlib import pyplot as plt
 import numpy as np
 from pathlib import Path
+from itertools import combinations
 import csv
 
 
@@ -126,12 +127,11 @@ class NoisyDataset(Dataset):
         if not self.root_dir.exists():
             raise FileNotFoundError(f"Directory {root_dir} not found")
 
-        # Initialize image pairs
         for folder in self.root_dir.iterdir():
             if folder.is_dir():
-                noisy_images = list(folder.glob('*.jpg'))
-                if len(noisy_images) >= 2:
-                    self.image_pairs.append((noisy_images[0], noisy_images[1]))
+                noisy_images = sorted(folder.glob('*.jpg'))
+                for img1, img2 in combinations(noisy_images, 2):
+                    self.image_pairs.append((img1, img2))
 
     def __len__(self):
         return len(self.image_pairs)
