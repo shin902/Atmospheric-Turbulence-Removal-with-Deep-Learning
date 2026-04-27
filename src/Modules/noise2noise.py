@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.utils.checkpoint import checkpoint
 from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms
 from PIL import Image
@@ -61,24 +62,22 @@ class UNet(nn.Module):
         self.final_conv = nn.Conv2d(64, 3, kernel_size=1)
 
     def forward(self, x):
-        # 入力サイズを保存
         input_size = x.shape[2:]
 
-        # Encoder
-        enc1 = self.encoder1(x)
+        # Encoder (gradient checkpointing でスキップ接続の活性化マップを保持しない)
+        enc1 = checkpoint(self.encoder1, x, use_reentrant=False)
         p1 = F.max_pool2d(enc1, 2)
 
-        enc2 = self.encoder2(p1)
+        enc2 = checkpoint(self.encoder2, p1, use_reentrant=False)
         p2 = F.max_pool2d(enc2, 2)
 
-        enc3 = self.encoder3(p2)
+        enc3 = checkpoint(self.encoder3, p2, use_reentrant=False)
         p3 = F.max_pool2d(enc3, 2)
 
-        enc4 = self.encoder4(p3)
+        enc4 = checkpoint(self.encoder4, p3, use_reentrant=False)
         p4 = F.max_pool2d(enc4, 2)
 
-        # Bottleneck
-        bottleneck = self.bottleneck(p4)
+        bottleneck = checkpoint(self.bottleneck, p4, use_reentrant=False)
 
         # Decoder with size matching
         d4 = self.upconv4(bottleneck)
@@ -129,6 +128,23 @@ class NoisyDataset(Dataset):
             raise FileNotFoundError(f"No images found in {root_dir}")
 
         self.mean_image = self._compute_or_load_mean()
+        self.cache_dir = self._build_cache()
+
+    def _cache_path(self, img_path):
+        name = str(img_path.relative_to(self.root_dir)).replace('/', '_').replace('.jpg', '.pt')
+        return self.root_dir / 'tensor_cache' / name
+
+    def _build_cache(self):
+        cache_dir = self.root_dir / 'tensor_cache'
+        cache_dir.mkdir(exist_ok=True)
+        uncached = [p for p in self.all_images if not self._cache_path(p).exists()]
+        if uncached:
+            print(f"テンソルキャッシュを構築中 ({len(uncached)}枚)...")
+            for path in uncached:
+                img = Image.open(str(path)).convert('RGB').resize(self.size, Image.BILINEAR)
+                torch.save(self.transform(img).half(), self._cache_path(path))
+            print("キャッシュ構築完了")
+        return cache_dir
 
     def _compute_or_load_mean(self):
         mean_path = self.root_dir / 'mean_image.pt'
@@ -151,9 +167,9 @@ class NoisyDataset(Dataset):
         return len(self.all_images)
 
     def __getitem__(self, idx):
-        input_img = Image.open(str(self.all_images[idx])).convert('RGB')
-        input_img = input_img.resize(self.size, Image.BILINEAR)
-        input_tensor = self.transform(input_img)
+        input_tensor = torch.load(
+            self._cache_path(self.all_images[idx]), weights_only=True
+        ).float()
 
         if self.custom_transform:
             input_tensor = self.custom_transform(input_tensor)
@@ -191,13 +207,17 @@ class Noise2Noise:
             self.train_dataset,
             batch_size=4,
             shuffle=True,
-            num_workers=0  # MacのMPSデバイスを使用する場合は0を推奨
+            num_workers=2,
+            persistent_workers=True,
+            multiprocessing_context='fork',
         )
         self.valid_loader = DataLoader(
             self.valid_dataset,
             batch_size=4,
             shuffle=False,
-            num_workers=0
+            num_workers=2,
+            persistent_workers=True,
+            multiprocessing_context='fork',
         )
     def train(self, epochs):
         best_valid_loss = float('inf')
