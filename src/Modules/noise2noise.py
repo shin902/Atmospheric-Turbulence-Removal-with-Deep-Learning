@@ -169,7 +169,10 @@ class Noise2Noise:
         self.model_dir = Path(model_dir)
         self.model_dir.mkdir(exist_ok=True)
 
-        self.transform = transforms.ToTensor()  # 必要なら他の変換も追加
+        self.transform = transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])
+        ])
         # Initialize model
         self.model = UNet().to(device)
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=0.001)
