@@ -193,13 +193,13 @@ class Noise2Noise:
         # Setup dataloaders with smaller batch size
         self.train_loader = DataLoader(
             self.train_dataset,
-            batch_size=8,
+            batch_size=4,
             shuffle=True,
             num_workers=0  # MacのMPSデバイスを使用する場合は0を推奨
         )
         self.valid_loader = DataLoader(
             self.valid_dataset,
-            batch_size=8,
+            batch_size=4,
             shuffle=False,
             num_workers=0
         )
