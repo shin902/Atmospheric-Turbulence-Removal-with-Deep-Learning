@@ -1,7 +1,6 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.utils.checkpoint import checkpoint
 from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms
 from PIL import Image
@@ -64,20 +63,20 @@ class UNet(nn.Module):
     def forward(self, x):
         input_size = x.shape[2:]
 
-        # Encoder (gradient checkpointing でスキップ接続の活性化マップを保持しない)
-        enc1 = checkpoint(self.encoder1, x, use_reentrant=False)
+        # Encoder
+        enc1 = self.encoder1(x)
         p1 = F.max_pool2d(enc1, 2)
 
-        enc2 = checkpoint(self.encoder2, p1, use_reentrant=False)
+        enc2 = self.encoder2(p1)
         p2 = F.max_pool2d(enc2, 2)
 
-        enc3 = checkpoint(self.encoder3, p2, use_reentrant=False)
+        enc3 = self.encoder3(p2)
         p3 = F.max_pool2d(enc3, 2)
 
-        enc4 = checkpoint(self.encoder4, p3, use_reentrant=False)
+        enc4 = self.encoder4(p3)
         p4 = F.max_pool2d(enc4, 2)
 
-        bottleneck = checkpoint(self.bottleneck, p4, use_reentrant=False)
+        bottleneck = self.bottleneck(p4)
 
         # Decoder with size matching
         d4 = self.upconv4(bottleneck)
@@ -337,7 +336,7 @@ if __name__ == "__main__":
     )
 
     # Train model
-    trainer.train(epochs=1000)
+    trainer.train(epochs=3)
     # trainer.load_model('8-2_model.pth')
 
     # Denoise a single image
