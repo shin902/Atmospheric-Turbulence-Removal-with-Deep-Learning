@@ -16,9 +16,6 @@ dependencies = [
     "torchvision>=0.21.0",
 ]
 
-[project.scripts]
-gakkai = "gakkai:main"
-
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

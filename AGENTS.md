@@ -12,18 +12,20 @@
 - `uv run python src/main/movie_denoise.py --input ./data/jupiter --output ./artifacts/denoised` — UNetパイプラインでフォルダ内画像を一括ノイズ除去。
 - `uv run python src/main/movie_affine.py --input ./data/jupiter --output ./artifacts/aligned` — 動画化前にアフィン補正を適用。
 - `uv run python src/GUI/GUI.py` — デスクトップGUIを起動。`src/GUI/models/` に推論用重みが必要です。
-- `uv run python -m src.Modules.noise2noise` — モジュール単体のデモを実行し、リファクタ後の動作確認に利用します。
+- `uv run python src/Modules/noise2noise.py` — モジュール単体のデモを実行し、リファクタ後の動作確認に利用します。
+
+venv を有効化して実行する場合（`uv sync` 後に `.venv` が生成されます）:
+
+```bash
+source .venv/bin/activate  # macOS / Linux
+# .venv\Scripts\activate   # Windows
+python src/main/movie_denoise.py --input ./data/jupiter --output ./artifacts/denoised
+```
 
 ## コーディング規約と命名
 - 4スペースインデント、Python 3.9準拠でPEP 8を概ね維持。パス操作は `pathlib.Path` を優先します。
 - 変数・関数は `snake_case`、クラスは `PascalCase`、設定値はモジュール冒頭の ALL_CAPS 定数にまとめます。
 - 新しいエントリーポイントは既存ファイル名に倣い、モジュールレベルのdocstringで役割を明記します。
-- 大規模変更前には `uv run python -m black src` などフォーマッタ／リンタを実行してください。
-
-## テスト指針
-- 現状公式テストスイートは未整備。テストを追加する場合は `tests/` 以下に配置し、`uv run pytest` で実行します。
-- 回帰確認には `src/Modules/noise_evaluation/` 内の指標スクリプト（例：`snr.py`, `psmr.py`）を利用し、`uv run python ... --before --after` 形式で差分を計測します。
-- PRでは期待されるSNRやPSMRの変化量、再現手順を記載し、レビュー時の検証コストを下げてください。
 
 ## コミットとプルリクエスト運用
 - Git履歴に倣い、1コミット1論点で簡潔な現在形サマリ（日本語可）を記述し、必要に応じて変更領域の接頭辞（`GUI`, `Modules` 等）を付けます。
