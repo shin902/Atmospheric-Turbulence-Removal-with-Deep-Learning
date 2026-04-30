@@ -152,15 +152,18 @@ class NoisyDataset(Dataset):
             return torch.load(mean_path, weights_only=True)
 
         print(f"平均画像を計算中 ({len(self.all_images)}枚)...")
+        n = len(self.all_images)
         acc = None
         for path in self.all_images:
             img = Image.open(str(path)).convert('RGB').resize(self.size, Image.BILINEAR)
-            tensor = self.transform(img)
-            acc = tensor.float() if acc is None else acc + tensor.float()
-        mean = acc / len(self.all_images)
-        torch.save(mean, mean_path)
+            tensor = self.transform(img).float()
+            if acc is None:
+                acc = tensor / n
+            else:
+                acc += tensor / n  # 1枚ずつ加算して蓄積を防ぐ
+        torch.save(acc, mean_path)
         print(f"平均画像を保存: {mean_path}")
-        return mean
+        return acc
 
     def __len__(self):
         return len(self.all_images)
@@ -206,17 +209,13 @@ class Noise2Noise:
             self.train_dataset,
             batch_size=4,
             shuffle=True,
-            num_workers=2,
-            persistent_workers=True,
-            multiprocessing_context='fork',
+            num_workers=0,
         )
         self.valid_loader = DataLoader(
             self.valid_dataset,
             batch_size=4,
             shuffle=False,
-            num_workers=2,
-            persistent_workers=True,
-            multiprocessing_context='fork',
+            num_workers=0,
         )
     def train(self, epochs):
         best_valid_loss = float('inf')
