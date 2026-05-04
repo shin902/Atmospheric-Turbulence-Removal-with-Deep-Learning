@@ -189,13 +189,13 @@ class Noise2Noise:
         # Setup dataloaders with smaller batch size
         self.train_loader = DataLoader(
             self.train_dataset,
-            batch_size=1,
+            batch_size=2,
             shuffle=True,
             num_workers=0,
         )
         self.valid_loader = DataLoader(
             self.valid_dataset,
-            batch_size=1,
+            batch_size=2,
             shuffle=False,
             num_workers=0,
         )
