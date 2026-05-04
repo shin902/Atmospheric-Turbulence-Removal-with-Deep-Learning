@@ -311,9 +311,9 @@ if __name__ == "__main__":
 
     # Initialize trainer
     trainer = Noise2Noise(
-        train_dir="../../Resources/AI/train_data",
-        valid_dir="../../Resources/AI/valid_data",
-        model_dir="../../Resources/AI/model_dir",
+        train_dir="../../../Resources/AI/train_data",
+        valid_dir="../../../Resources/AI/valid_data",
+        model_dir="../../../Resources/AI/model_dir",
         device=device
     )
 
@@ -322,7 +322,7 @@ if __name__ == "__main__":
     # trainer.load_model('8-2_model.pth')
 
     # Denoise a single image
-    # trainer.denoise_image("../../Resources/Images/19_57_44/001.jpg", "../../Resources/Input and Output/output/001-19_57_44_8.2.jpg")
+    # trainer.denoise_image("../../../Resources/Images/19_57_44/001.jpg", "../../../Resources/Input and Output/output/001-19_57_44_8.2.jpg")
 
     params = 0
     for p in net.parameters():
