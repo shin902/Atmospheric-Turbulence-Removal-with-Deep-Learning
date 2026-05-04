@@ -108,7 +108,7 @@ class UNet(nn.Module):
 
 
 class NoisyDataset(Dataset):
-    def __init__(self, root_dir, transform=None):
+    def __init__(self, root_dir, transform=None, max_pairs=None):
         self.root_dir = Path(root_dir)
         self.transform = transforms.Compose([
             transforms.ToTensor(),
@@ -131,6 +131,9 @@ class NoisyDataset(Dataset):
         if not self.image_pairs:
             raise FileNotFoundError(f"No consecutive image pairs found in {root_dir}")
 
+        if max_pairs is not None:
+            self.image_pairs = self.image_pairs[:max_pairs]
+
     def __len__(self):
         return len(self.image_pairs)
 
@@ -151,7 +154,7 @@ class NoisyDataset(Dataset):
 
 # Training class
 class Noise2Noise:
-    def __init__(self, train_dir, valid_dir, model_dir, device):
+    def __init__(self, train_dir, valid_dir, model_dir, device, max_pairs=None):
         self.device = device
         self.model_dir = Path(model_dir)
         self.model_dir.mkdir(exist_ok=True)
@@ -169,8 +172,8 @@ class Noise2Noise:
         additional_transforms = None  # 必要に応じて追加の transforms を定義
 
         try:
-            self.train_dataset = NoisyDataset(train_dir, additional_transforms)
-            self.valid_dataset = NoisyDataset(valid_dir, additional_transforms)
+            self.train_dataset = NoisyDataset(train_dir, additional_transforms, max_pairs=max_pairs)
+            self.valid_dataset = NoisyDataset(valid_dir, additional_transforms, max_pairs=max_pairs)
         except FileNotFoundError as e:
             print(f"Error initializing datasets: {e}")
             raise
@@ -304,11 +307,12 @@ if __name__ == "__main__":
         train_dir="../../../Resources/AI/train_data",
         valid_dir="../../../Resources/AI/valid_data",
         model_dir="../../../Resources/AI/model_dir",
-        device=device
+        device=device,
+        max_pairs=200,
     )
 
     # Train model
-    trainer.train(epochs=1000)
+    trainer.train(epochs=10)
     # trainer.load_model('8-2_model.pth')
 
     # Denoise a single image
