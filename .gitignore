@@ -3,3 +3,4 @@
 *.pth
 data/
 __pycache__
+.serena/project.yml
