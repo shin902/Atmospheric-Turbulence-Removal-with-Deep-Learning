@@ -127,23 +127,6 @@ class NoisyDataset(Dataset):
             raise FileNotFoundError(f"No images found in {root_dir}")
 
         self.mean_image = self._compute_or_load_mean()
-        self.cache_dir = self._build_cache()
-
-    def _cache_path(self, img_path):
-        name = str(img_path.relative_to(self.root_dir)).replace('/', '_').replace('.jpg', '.pt')
-        return self.root_dir / 'tensor_cache' / name
-
-    def _build_cache(self):
-        cache_dir = self.root_dir / 'tensor_cache'
-        cache_dir.mkdir(exist_ok=True)
-        uncached = [p for p in self.all_images if not self._cache_path(p).exists()]
-        if uncached:
-            print(f"テンソルキャッシュを構築中 ({len(uncached)}枚)...")
-            for path in uncached:
-                img = Image.open(str(path)).convert('RGB').resize(self.size, Image.BILINEAR)
-                torch.save(self.transform(img).half(), self._cache_path(path))
-            print("キャッシュ構築完了")
-        return cache_dir
 
     def _compute_or_load_mean(self):
         mean_path = self.root_dir / 'mean_image.pt'
@@ -169,9 +152,8 @@ class NoisyDataset(Dataset):
         return len(self.all_images)
 
     def __getitem__(self, idx):
-        input_tensor = torch.load(
-            self._cache_path(self.all_images[idx]), weights_only=True
-        ).float()
+        img = Image.open(str(self.all_images[idx])).convert('RGB').resize(self.size, Image.BILINEAR)
+        input_tensor = self.transform(img)
 
         if self.custom_transform:
             input_tensor = self.custom_transform(input_tensor)
@@ -228,7 +210,7 @@ class Noise2Noise:
                 input_img = input_img.to(self.device)
                 target_img = target_img.to(self.device)
 
-                self.optimizer.zero_grad()
+                self.optimizer.zero_grad(set_to_none=True)
                 output = self.model(input_img)
                 loss = self.criterion(output, target_img)
 
@@ -240,6 +222,8 @@ class Noise2Noise:
                 if batch_idx % 10 == 0:
                     print(f'Epoch {epoch+1}/{epochs} [{batch_idx}/{len(self.train_loader)}] '
                             f'Loss: {loss.item():.6f}')
+
+            torch.mps.empty_cache()
 
             # Validation
             valid_loss = self.validate()
