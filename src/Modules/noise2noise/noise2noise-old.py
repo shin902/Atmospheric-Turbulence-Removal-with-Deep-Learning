@@ -5,9 +5,6 @@ from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms
 from PIL import Image
 from pathlib import Path
-from matplotlib import pyplot as plt
-import numpy as np
-from pathlib import Path
 import csv
 
 
@@ -106,7 +103,7 @@ class UNet(nn.Module):
         print(f"Decoder1 output: {d1.shape}")
         """
 
-        return torch.sigmoid(output)
+        return torch.tanh(output)
 # Dataset for noisy image pairs
 
 
@@ -129,7 +126,7 @@ class NoisyDataset(Dataset):
         # Initialize image pairs
         for folder in self.root_dir.iterdir():
             if folder.is_dir():
-                noisy_images = list(folder.glob('*.jpg'))
+                noisy_images = sorted(folder.glob('*.jpg'))
                 if len(noisy_images) >= 2:
                     self.image_pairs.append((noisy_images[0], noisy_images[1]))
 
@@ -191,15 +188,15 @@ class Noise2Noise:
         # Setup dataloaders with smaller batch size
         self.train_loader = DataLoader(
             self.train_dataset,
-            batch_size=8,
+            batch_size=4,
             shuffle=True,
-            num_workers=0  # MacのMPSデバイスを使用する場合は0を推奨
+            num_workers=0,
         )
         self.valid_loader = DataLoader(
             self.valid_dataset,
-            batch_size=8,
+            batch_size=4,
             shuffle=False,
-            num_workers=0
+            num_workers=0,
         )
     def train(self, epochs):
         best_valid_loss = float('inf')
@@ -212,7 +209,7 @@ class Noise2Noise:
                 input_img = input_img.to(self.device)
                 target_img = target_img.to(self.device)
 
-                self.optimizer.zero_grad()
+                self.optimizer.zero_grad(set_to_none=True)
                 output = self.model(input_img)
                 loss = self.criterion(output, target_img)
 
@@ -224,6 +221,8 @@ class Noise2Noise:
                 if batch_idx % 10 == 0:
                     print(f'Epoch {epoch+1}/{epochs} [{batch_idx}/{len(self.train_loader)}] '
                             f'Loss: {loss.item():.6f}')
+
+            torch.mps.empty_cache()
 
             # Validation
             valid_loss = self.validate()
@@ -292,11 +291,11 @@ class Noise2Noise:
         with torch.no_grad():
             output = self.model(input_tensor)
 
-        # 出力テンソルを入力画像サイズにリサイズ
-        output = F.interpolate(output, size=input_tensor.shape[2:], mode='bilinear', align_corners=False)
-
-        # テンソルを画像に変換して保存
-        output_img = transforms.ToPILImage()(output.squeeze(0).cpu())
+        # tanh出力 [-1,1] を [0,1] に逆正規化してから保存
+        output = output.squeeze(0).cpu()
+        output = output * 0.5 + 0.5
+        output = output.clamp(0, 1)
+        output_img = transforms.ToPILImage()(output)
         output_img.save(output_path)
 
 
