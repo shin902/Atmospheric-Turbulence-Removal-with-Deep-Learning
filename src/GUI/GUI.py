@@ -18,7 +18,7 @@ import flet as ft
 module_dir = os.path.abspath("../")
 sys.path.append(module_dir)
 
-from Modules.noise2noise import Noise2Noise
+from Modules.noise2noise import Denoiser
 from Modules.ellipse import ellipse_to_circle
 
 
@@ -60,9 +60,7 @@ def main(page: ft.Page):
         else:
             device = torch.device("cpu")
 
-        noise_reducer = Noise2Noise(
-            train_dir = "./train_data",  # train_dir and valid_dir are not actually used in denoise_image function
-            valid_dir = "./valid_data",  # but are required for Noise2Noise class initialization
+        noise_reducer = Denoiser(
             model_dir = models_dir, # models_dir text field value を使用
             device=device
         )
