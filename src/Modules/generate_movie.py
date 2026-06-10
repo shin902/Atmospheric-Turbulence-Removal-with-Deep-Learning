@@ -6,10 +6,14 @@ from tqdm import tqdm
 
 
 def generate_movie(input_folder, mv_path):
-    os.makedirs(input_folder, exist_ok=True)
-
     img_list = sorted(glob(input_folder+"/*.jpg"))
+    if not img_list:
+        raise FileNotFoundError(f"No jpg files found in {input_folder}")
     frames = len(img_list)
+
+    mv_dir = os.path.dirname(mv_path)
+    if mv_dir:
+        os.makedirs(mv_dir, exist_ok=True)
 
     img = cv2.imread(img_list[0])
     h, w = img.shape[:2]
