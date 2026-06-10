@@ -1,5 +1,6 @@
 import argparse
 import csv
+import sys
 from pathlib import Path
 
 import torch
@@ -389,6 +390,8 @@ def _build_parser():
     denoise_parser.add_argument("--device", default=None,
                                 help="cuda / mps / cpu（省略時は自動選択）")
 
+    subparsers.add_parser("interactive", help="対話形式でtrain/denoiseを実行する")
+
     return parser
 
 
@@ -428,9 +431,103 @@ def _run_denoise(args):
         print(f"Saved to {output_path}")
 
 
-if __name__ == "__main__":
-    cli_args = _build_parser().parse_args()
+def _prompt(message, default=None, cast=str):
+    """input() で1項目を取得する。空入力ならdefaultを返し、cast失敗時は再入力させる"""
+    suffix = f" [{default}]" if default is not None else ""
+    while True:
+        raw = input(f"{message}{suffix}: ").strip()
+        if not raw:
+            if default is not None:
+                return default
+            print("値を入力してください。")
+            continue
+        if cast is str:
+            return raw
+        try:
+            return cast(raw)
+        except ValueError:
+            print("数値を入力してください。")
+
+
+def _prompt_optional(message):
+    """空入力ならNoneを返す（device/resumeなど未指定可の項目用）"""
+    raw = input(f"{message}（空欄で未指定）: ").strip()
+    return raw or None
+
+
+def _interactive_train():
+    train_dir = _prompt("学習データのディレクトリ", default=str(_PROJECT_ROOT / "Resources/AI/train_data"))
+    valid_dir = _prompt("検証データのディレクトリ", default=str(_PROJECT_ROOT / "Resources/AI/valid_data"))
+    model_dir = _prompt("モデル・損失CSVの保存先ディレクトリ", default=str(_PROJECT_ROOT / "Resources/AI/model_dir"))
+    epochs = _prompt("エポック数", default=10, cast=int)
+    max_pairs = _prompt("使用する画像ペア数の上限（0で無制限）", default=200, cast=int)
+
+    while True:
+        run_name = _prompt("保存するモデル・CSVのファイル名（拡張子なし）", default="fixed_model")
+        try:
+            run_name = _run_name_type(run_name)
+            break
+        except argparse.ArgumentTypeError as e:
+            print(e)
+
+    device = _prompt_optional("デバイス（cuda/mps/cpu、省略時は自動選択）")
+    resume = _prompt_optional("学習を再開するモデルファイル")
+
+    args = argparse.Namespace(
+        train_dir=train_dir,
+        valid_dir=valid_dir,
+        model_dir=model_dir,
+        epochs=epochs,
+        max_pairs=max_pairs,
+        run_name=run_name,
+        device=device,
+        resume=resume,
+    )
+    _run_train(args)
+
+
+def _interactive_denoise():
+    model = _prompt("モデルファイル（.pth）のパス")
+    input_path = _prompt("入力画像ファイル、またはjpgを含むディレクトリ")
+    output_path = _prompt("出力画像ファイル、または出力先ディレクトリ")
+    device = _prompt_optional("デバイス（cuda/mps/cpu、省略時は自動選択）")
+
+    args = argparse.Namespace(
+        model=model,
+        input=input_path,
+        output=output_path,
+        device=device,
+    )
+    _run_denoise(args)
+
+
+def _run_interactive():
+    print("=== Noise2Noise 対話モード ===")
+    while True:
+        choice = input("実行する操作を選んでください [train/denoise]: ").strip().lower()
+        if choice in ("train", "t"):
+            _interactive_train()
+            return
+        if choice in ("denoise", "d"):
+            _interactive_denoise()
+            return
+        print("'train' か 'denoise' を入力してください。")
+
+
+def main(argv=None):
+    if argv is None:
+        argv = sys.argv[1:]
+    if not argv:
+        argv = ["interactive"]
+
+    cli_args = _build_parser().parse_args(argv)
     if cli_args.command == "train":
         _run_train(cli_args)
-    else:
+    elif cli_args.command == "denoise":
         _run_denoise(cli_args)
+    else:
+        _run_interactive()
+
+
+if __name__ == "__main__":
+    main()

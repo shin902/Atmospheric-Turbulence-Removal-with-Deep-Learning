@@ -12,8 +12,12 @@ from Modules.noise2noise import (
     NoisyDataset,
     UNet,
     _build_parser,
+    _prompt,
+    _prompt_optional,
     _run_denoise,
+    _run_interactive,
     _run_name_type,
+    main,
     resolve_device,
 )
 
@@ -328,3 +332,167 @@ class TestUNet:
         assert y.shape == (1, 3, 32, 32)
         assert y.min() >= -1.0
         assert y.max() <= 1.0
+
+
+def _set_inputs(monkeypatch, responses):
+    it = iter(responses)
+    monkeypatch.setattr("builtins.input", lambda prompt="": next(it))
+
+
+class TestPrompt:
+    def test_空入力でデフォルトを返す(self, monkeypatch):
+        _set_inputs(monkeypatch, [""])
+        assert _prompt("質問", default="abc") == "abc"
+
+    def test_入力値をそのまま返す(self, monkeypatch):
+        _set_inputs(monkeypatch, ["hello"])
+        assert _prompt("質問") == "hello"
+
+    def test_castで数値に変換する(self, monkeypatch):
+        _set_inputs(monkeypatch, ["5"])
+        assert _prompt("質問", default=10, cast=int) == 5
+
+    def test_デフォルトなしの空入力は再入力させる(self, monkeypatch):
+        _set_inputs(monkeypatch, ["", "value"])
+        assert _prompt("質問") == "value"
+
+    def test_不正な数値は再入力させる(self, monkeypatch, capsys):
+        _set_inputs(monkeypatch, ["abc", "3"])
+        assert _prompt("質問", cast=int) == 3
+        assert "数値を入力してください" in capsys.readouterr().out
+
+
+class TestPromptOptional:
+    def test_空入力はNone(self, monkeypatch):
+        _set_inputs(monkeypatch, [""])
+        assert _prompt_optional("質問") is None
+
+    def test_入力値をそのまま返す(self, monkeypatch):
+        _set_inputs(monkeypatch, ["cuda"])
+        assert _prompt_optional("質問") == "cuda"
+
+
+class TestInteractiveTrain:
+    def test_入力値からNamespaceを作って_run_trainを呼ぶ(self, monkeypatch, tmp_path):
+        _set_inputs(monkeypatch, [
+            str(tmp_path / "train"),
+            str(tmp_path / "valid"),
+            str(tmp_path / "model"),
+            "5",
+            "100",
+            "my_model",
+            "cpu",
+            "",
+        ])
+        captured = {}
+        monkeypatch.setattr(noise2noise, "_run_train", lambda args: captured.setdefault("args", args))
+
+        noise2noise._interactive_train()
+
+        args = captured["args"]
+        assert args.train_dir == str(tmp_path / "train")
+        assert args.valid_dir == str(tmp_path / "valid")
+        assert args.model_dir == str(tmp_path / "model")
+        assert args.epochs == 5
+        assert args.max_pairs == 100
+        assert args.run_name == "my_model"
+        assert args.device == "cpu"
+        assert args.resume is None
+
+    def test_run_nameにパス区切りを入れると再入力になる(self, monkeypatch, tmp_path, capsys):
+        _set_inputs(monkeypatch, [
+            str(tmp_path / "train"),
+            str(tmp_path / "valid"),
+            str(tmp_path / "model"),
+            "1",
+            "1",
+            "a/b",
+            "valid_name",
+            "",
+            "",
+        ])
+        captured = {}
+        monkeypatch.setattr(noise2noise, "_run_train", lambda args: captured.setdefault("args", args))
+
+        noise2noise._interactive_train()
+
+        assert captured["args"].run_name == "valid_name"
+        assert "パス区切り" in capsys.readouterr().out
+
+
+class TestInteractiveDenoise:
+    def test_入力値からNamespaceを作って_run_denoiseを呼ぶ(self, monkeypatch, tmp_path):
+        _set_inputs(monkeypatch, [
+            str(tmp_path / "model.pth"),
+            str(tmp_path / "input.jpg"),
+            str(tmp_path / "output.jpg"),
+            "",
+        ])
+        captured = {}
+        monkeypatch.setattr(noise2noise, "_run_denoise", lambda args: captured.setdefault("args", args))
+
+        noise2noise._interactive_denoise()
+
+        args = captured["args"]
+        assert args.model == str(tmp_path / "model.pth")
+        assert args.input == str(tmp_path / "input.jpg")
+        assert args.output == str(tmp_path / "output.jpg")
+        assert args.device is None
+
+
+class TestRunInteractive:
+    def test_train選択で_interactive_trainが呼ばれる(self, monkeypatch):
+        _set_inputs(monkeypatch, ["train"])
+        called = []
+        monkeypatch.setattr(noise2noise, "_interactive_train", lambda: called.append("train"))
+        monkeypatch.setattr(noise2noise, "_interactive_denoise", lambda: called.append("denoise"))
+
+        _run_interactive()
+
+        assert called == ["train"]
+
+    def test_denoise選択で_interactive_denoiseが呼ばれる(self, monkeypatch):
+        _set_inputs(monkeypatch, ["denoise"])
+        called = []
+        monkeypatch.setattr(noise2noise, "_interactive_train", lambda: called.append("train"))
+        monkeypatch.setattr(noise2noise, "_interactive_denoise", lambda: called.append("denoise"))
+
+        _run_interactive()
+
+        assert called == ["denoise"]
+
+    def test_不正な入力は再度プロンプトされる(self, monkeypatch, capsys):
+        _set_inputs(monkeypatch, ["foo", "denoise"])
+        monkeypatch.setattr(noise2noise, "_interactive_denoise", lambda: None)
+
+        _run_interactive()
+
+        assert "'train' か 'denoise' を入力してください。" in capsys.readouterr().out
+
+
+class TestMain:
+    def test_引数なしはinteractiveになる(self, monkeypatch):
+        called = []
+        monkeypatch.setattr(noise2noise, "_run_interactive", lambda: called.append("interactive"))
+        main([])
+        assert called == ["interactive"]
+
+    def test_interactiveコマンドを明示しても同じ(self, monkeypatch):
+        called = []
+        monkeypatch.setattr(noise2noise, "_run_interactive", lambda: called.append("interactive"))
+        main(["interactive"])
+        assert called == ["interactive"]
+
+    def test_trainコマンドは_run_trainを呼ぶ(self, monkeypatch):
+        called = []
+        monkeypatch.setattr(noise2noise, "_run_train", lambda args: called.append(args))
+        main(["train"])
+        assert len(called) == 1
+        assert called[0].command == "train"
+
+    def test_denoiseコマンドは_run_denoiseを呼ぶ(self, monkeypatch, tmp_path):
+        called = []
+        monkeypatch.setattr(noise2noise, "_run_denoise", lambda args: called.append(args))
+        main(["denoise", "--model", "m.pth", "--input", "in.jpg", "--output", "out.jpg"])
+        assert len(called) == 1
+        assert called[0].command == "denoise"
