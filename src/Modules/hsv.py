@@ -5,6 +5,7 @@ class HSVImage:
     def __init__(self, image):
         self._original_image = image.copy()  # プライベート変数として定義
         self._hsv_image = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+        self._mask = None
 
     def get_mask(self, hsv_lower=None, hsv_upper=None):
         """

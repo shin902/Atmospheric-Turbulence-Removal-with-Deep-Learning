@@ -43,6 +43,11 @@ class TestHSVImage:
         assert tuple(masked[0, 0]) == (0, 128, 255)  # オレンジは残る
         assert tuple(masked[0, 3]) == (0, 0, 0)  # 青は黒に
 
+    def test_マスク未生成でmake_masked_imageはValueError(self, sample_image):
+        hsv_img = HSVImage(sample_image)
+        with pytest.raises(ValueError, match="マスクが生成されていません"):
+            hsv_img.make_masked_image()
+
     def test_明示的にマスクを渡せる(self, sample_image):
         hsv_img = HSVImage(sample_image)
         mask = np.zeros((4, 4), dtype=np.uint8)  # 全部マスクアウト
