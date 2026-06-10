@@ -5,9 +5,6 @@ from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms
 from PIL import Image
 from pathlib import Path
-from matplotlib import pyplot as plt
-import numpy as np
-from pathlib import Path
 import csv
 
 
@@ -61,6 +58,7 @@ class UNet(nn.Module):
         self.final_conv = nn.Conv2d(64, 3, kernel_size=1)
 
     def forward(self, x):
+        # 入力サイズを保存
         input_size = x.shape[2:]
 
         # Encoder
@@ -76,6 +74,7 @@ class UNet(nn.Module):
         enc4 = self.encoder4(p3)
         p4 = F.max_pool2d(enc4, 2)
 
+        # Bottleneck
         bottleneck = self.bottleneck(p4)
 
         # Decoder with size matching
@@ -104,65 +103,58 @@ class UNet(nn.Module):
         print(f"Decoder1 output: {d1.shape}")
         """
 
-        return torch.sigmoid(output)
+        return torch.tanh(output)
 # Dataset for noisy image pairs
 
 
 class NoisyDataset(Dataset):
-    def __init__(self, root_dir, transform=None):
+    def __init__(self, root_dir, transform=None, max_pairs=None):
         self.root_dir = Path(root_dir)
         self.transform = transforms.Compose([
             transforms.ToTensor(),
-            transforms.Normalize(mean=[0.5, 0.5, 0.5],
-                                 std=[0.5, 0.5, 0.5])
+            transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])
         ])
         self.custom_transform = transform
         self.size = (780, 972)
+        self.image_pairs = []
 
         if not self.root_dir.exists():
             raise FileNotFoundError(f"Directory {root_dir} not found")
 
-        self.all_images = sorted(self.root_dir.rglob('*.jpg'))
-        if not self.all_images:
-            raise FileNotFoundError(f"No images found in {root_dir}")
+        # フォルダ内の連続する2枚を全ペア化（N枚→N-1ペア）
+        for folder in sorted(self.root_dir.iterdir()):
+            if folder.is_dir():
+                images = sorted(folder.glob('*.jpg'))
+                for i in range(len(images) - 1):
+                    self.image_pairs.append((images[i], images[i + 1]))
 
-        self.mean_image = self._compute_or_load_mean()
+        if not self.image_pairs:
+            raise FileNotFoundError(f"No consecutive image pairs found in {root_dir}")
 
-    def _compute_or_load_mean(self):
-        mean_path = self.root_dir / 'mean_image.pt'
-        if mean_path.exists():
-            print(f"平均画像をロード: {mean_path}")
-            return torch.load(mean_path, weights_only=True)
-
-        print(f"平均画像を計算中 ({len(self.all_images)}枚)...")
-        n = len(self.all_images)
-        acc = None
-        for path in self.all_images:
-            img = Image.open(str(path)).convert('RGB').resize(self.size, Image.BILINEAR)
-            tensor = self.transform(img).float()
-            if acc is None:
-                acc = tensor / n
-            else:
-                acc += tensor / n  # 1枚ずつ加算して蓄積を防ぐ
-        torch.save(acc, mean_path)
-        print(f"平均画像を保存: {mean_path}")
-        return acc
+        if max_pairs is not None:
+            self.image_pairs = self.image_pairs[:max_pairs]
 
     def __len__(self):
-        return len(self.all_images)
+        return len(self.image_pairs)
 
     def __getitem__(self, idx):
-        img = Image.open(str(self.all_images[idx])).convert('RGB').resize(self.size, Image.BILINEAR)
-        input_tensor = self.transform(img)
+        img1_path, img2_path = self.image_pairs[idx]
+
+        input_img = Image.open(str(img1_path)).convert('RGB').resize(self.size, Image.BILINEAR)
+        target_img = Image.open(str(img2_path)).convert('RGB').resize(self.size, Image.BILINEAR)
+
+        input_tensor = self.transform(input_img)
+        target_tensor = self.transform(target_img)
 
         if self.custom_transform:
             input_tensor = self.custom_transform(input_tensor)
+            target_tensor = self.custom_transform(target_tensor)
 
-        return input_tensor, self.mean_image
+        return input_tensor, target_tensor
 
 # Training class
 class Noise2Noise:
-    def __init__(self, train_dir, valid_dir, model_dir, device):
+    def __init__(self, train_dir, valid_dir, model_dir, device, max_pairs=None):
         self.device = device
         self.model_dir = Path(model_dir)
         self.model_dir.mkdir(exist_ok=True)
@@ -180,8 +172,8 @@ class Noise2Noise:
         additional_transforms = None  # 必要に応じて追加の transforms を定義
 
         try:
-            self.train_dataset = NoisyDataset(train_dir, additional_transforms)
-            self.valid_dataset = NoisyDataset(valid_dir, additional_transforms)
+            self.train_dataset = NoisyDataset(train_dir, additional_transforms, max_pairs=max_pairs)
+            self.valid_dataset = NoisyDataset(valid_dir, additional_transforms, max_pairs=max_pairs)
         except FileNotFoundError as e:
             print(f"Error initializing datasets: {e}")
             raise
@@ -292,11 +284,11 @@ class Noise2Noise:
         with torch.no_grad():
             output = self.model(input_tensor)
 
-        # 出力テンソルを入力画像サイズにリサイズ
-        output = F.interpolate(output, size=input_tensor.shape[2:], mode='bilinear', align_corners=False)
-
-        # テンソルを画像に変換して保存
-        output_img = transforms.ToPILImage()(output.squeeze(0).cpu())
+        # tanh出力 [-1,1] を [0,1] に逆正規化してから保存
+        output = output.squeeze(0).cpu()
+        output = output * 0.5 + 0.5
+        output = output.clamp(0, 1)
+        output_img = transforms.ToPILImage()(output)
         output_img.save(output_path)
 
 
@@ -315,15 +307,16 @@ if __name__ == "__main__":
         train_dir="../../Resources/AI/train_data",
         valid_dir="../../Resources/AI/valid_data",
         model_dir="../../Resources/AI/model_dir",
-        device=device
+        device=device,
+        max_pairs=200,
     )
 
     # Train model
-    trainer.train(epochs=3)
+    trainer.train(epochs=10)
     # trainer.load_model('8-2_model.pth')
 
     # Denoise a single image
-    trainer.denoise_image("../../Resources/Images/19_57_44/001.jpg", "../../Resources/Input and Output/output/001-19_57_44_8.2.jpg")
+    # trainer.denoise_image("../../Resources/Images/19_57_44/001.jpg", "../../Resources/Input and Output/output/001-19_57_44_8.2.jpg")
 
     params = 0
     for p in net.parameters():
