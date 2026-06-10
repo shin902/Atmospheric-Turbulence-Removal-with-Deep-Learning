@@ -96,12 +96,20 @@ class TestNoisyDataset:
         with pytest.raises(FileNotFoundError):
             NoisyDataset(tmp_path)
 
-    def test_ルート直下の画像は対象外(self, tmp_path, make_jpg):
-        # サブフォルダ内の連続画像のみペア化される仕様
+    def test_ルート直下の画像も連続ペア化される(self, tmp_path, make_jpg):
         make_jpg(tmp_path / "a.jpg")
         make_jpg(tmp_path / "b.jpg")
-        with pytest.raises(FileNotFoundError):
-            NoisyDataset(tmp_path)
+        make_jpg(tmp_path / "c.jpg")
+        dataset = NoisyDataset(tmp_path)
+        assert len(dataset) == 2
+
+    def test_ルート直下とサブフォルダの両方が使われる(self, tmp_path, make_jpg):
+        make_jpg(tmp_path / "a.jpg")
+        make_jpg(tmp_path / "b.jpg")
+        for i in range(3):
+            make_jpg(tmp_path / "folder1" / f"{i:03d}.jpg")
+        dataset = NoisyDataset(tmp_path)
+        assert len(dataset) == 3  # ルート直下: 1ペア + folder1: 2ペア
 
     def test_N枚からN_1ペアできる(self, tmp_path, make_jpg):
         for i in range(3):

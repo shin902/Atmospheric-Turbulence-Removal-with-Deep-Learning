@@ -126,6 +126,12 @@ class NoisyDataset(Dataset):
         if not self.root_dir.exists():
             raise FileNotFoundError(f"Directory {root_dir} not found")
 
+        # ルート直下のjpgも1つの連続シーケンスとしてペア化
+        # （後方互換: サブフォルダ構成は従来通り処理する）
+        root_images = sorted(self.root_dir.glob('*.jpg'))
+        for i in range(len(root_images) - 1):
+            self.image_pairs.append((root_images[i], root_images[i + 1]))
+
         # フォルダ内の連続する2枚を全ペア化（N枚→N-1ペア）
         for folder in sorted(self.root_dir.iterdir()):
             if folder.is_dir():
