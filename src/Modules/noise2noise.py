@@ -223,6 +223,7 @@ class Noise2Noise(Denoiser):
 
         self.train_losses = []
         self.valid_losses = []
+        self.best_valid_loss = float('inf')
 
         # データセットは train() 呼び出し時まで遅延生成する
         # （推論だけの利用なら train_dir / valid_dir は不要）
@@ -265,8 +266,6 @@ class Noise2Noise(Denoiser):
             raise ValueError("model_dir is required for training")
         self._setup_data()
 
-        best_valid_loss = float('inf')
-
         for epoch in range(epochs):
             self.model.train()
             train_loss = 0
@@ -298,8 +297,8 @@ class Noise2Noise(Denoiser):
             self.valid_losses.append(valid_loss)
 
             # Save best model
-            if valid_loss < best_valid_loss:
-                best_valid_loss = valid_loss
+            if valid_loss < self.best_valid_loss:
+                self.best_valid_loss = valid_loss
                 self.save_model(run_name + '.pth')
         self.save_losses_to_csv(run_name + '.csv')
 
@@ -323,6 +322,9 @@ class Noise2Noise(Denoiser):
         torch.save({
             'model_state_dict': self.model.state_dict(),
             'optimizer_state_dict': self.optimizer.state_dict(),
+            'best_valid_loss': self.best_valid_loss,
+            'train_losses': self.train_losses,
+            'valid_losses': self.valid_losses,
         }, save_path)
 
     def save_losses_to_csv(self, filename):
@@ -338,6 +340,10 @@ class Noise2Noise(Denoiser):
         checkpoint = super().load_model(filename)
         if 'optimizer_state_dict' in checkpoint:
             self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+        # 旧形式のチェックポイントにはこれらのキーがないため get で復元する
+        self.best_valid_loss = checkpoint.get('best_valid_loss', float('inf'))
+        self.train_losses = list(checkpoint.get('train_losses', []))
+        self.valid_losses = list(checkpoint.get('valid_losses', []))
 
 
 def _build_parser():
