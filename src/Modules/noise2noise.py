@@ -1,18 +1,24 @@
+import argparse
+import csv
+from pathlib import Path
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from PIL import Image
 from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms
-from PIL import Image
-from pathlib import Path
-import csv
 
 
-train_losses = []
-valid_losses = []
-
-model_csv_name = "fixed_model"
-
+def resolve_device(device=None):
+    """device 未指定なら cuda → mps → cpu の順で自動選択する"""
+    if device is not None:
+        return torch.device(device)
+    if torch.cuda.is_available():
+        return torch.device("cuda")
+    if torch.backends.mps.is_available():
+        return torch.device("mps")
+    return torch.device("cpu")
 
 
 # Double Convolution block for UNet
@@ -20,10 +26,10 @@ class DoubleConv(nn.Module):
     def __init__(self, in_channels, out_channels):
         super().__init__()
         self.conv = nn.Sequential(
-            nn.Conv2d(in_channels, out_channels, kernel_size=3, padding='same'),  # padding='same' に変更
+            nn.Conv2d(in_channels, out_channels, kernel_size=3, padding='same'),
             nn.BatchNorm2d(out_channels),
             nn.ReLU(inplace=True),
-            nn.Conv2d(out_channels, out_channels, kernel_size=3, padding='same'),  # padding='same' に変更
+            nn.Conv2d(out_channels, out_channels, kernel_size=3, padding='same'),
             nn.BatchNorm2d(out_channels),
             nn.ReLU(inplace=True)
         )
@@ -97,16 +103,11 @@ class UNet(nn.Module):
         # 最終出力を入力サイズにリサイズ
         output = self.final_conv(d1)
         output = F.interpolate(output, size=input_size, mode='bilinear', align_corners=True)
-        """
-        print(f"Input size: {x.shape}")
-        print(f"Encoder1 output: {enc1.shape}")
-        print(f"Decoder1 output: {d1.shape}")
-        """
 
         return torch.tanh(output)
+
+
 # Dataset for noisy image pairs
-
-
 class NoisyDataset(Dataset):
     def __init__(self, root_dir, transform=None, max_pairs=None):
         self.root_dir = Path(root_dir)
@@ -152,46 +153,116 @@ class NoisyDataset(Dataset):
 
         return input_tensor, target_tensor
 
-# Training class
-class Noise2Noise:
-    def __init__(self, train_dir, valid_dir, model_dir, device, max_pairs=None):
-        self.device = device
-        self.model_dir = Path(model_dir)
-        self.model_dir.mkdir(exist_ok=True)
+
+class Denoiser:
+    """推論専用クラス。学習データなしでモデル読み込み・ノイズ除去ができる"""
+
+    def __init__(self, device=None, model_dir=None):
+        self.device = resolve_device(device)
+        self.model_dir = Path(model_dir) if model_dir is not None else None
 
         self.transform = transforms.Compose([
             transforms.ToTensor(),
             transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])
         ])
-        # Initialize model
-        self.model = UNet().to(device)
+        self.model = UNet().to(self.device)
+
+    def _resolve_model_path(self, filename):
+        # パス区切りを含む・絶対パス・model_dir 未設定の場合はそのままのパスとして扱い、
+        # 単なるファイル名なら model_dir からの相対とみなす（従来の load_model 互換）
+        path = Path(filename)
+        if len(path.parts) > 1 or self.model_dir is None:
+            return path
+        return self.model_dir / path
+
+    def load_model(self, filename):
+        load_path = self._resolve_model_path(filename)
+        checkpoint = torch.load(load_path, weights_only=True, map_location=self.device)
+        self.model.load_state_dict(checkpoint['model_state_dict'])
+        return checkpoint
+
+    def denoise_image(self, input_path, output_path):
+        self.model.eval()
+
+        # 画像の読み込みと変換
+        input_img = Image.open(input_path).convert('RGB')
+        input_tensor = self.transform(input_img).unsqueeze(0).to(self.device)
+
+        # モデルの推論
+        with torch.no_grad():
+            output = self.model(input_tensor)
+
+        # tanh出力 [-1,1] を [0,1] に逆正規化してから保存
+        output = output.squeeze(0).cpu()
+        output = output * 0.5 + 0.5
+        output = output.clamp(0, 1)
+        output_img = transforms.ToPILImage()(output)
+        output_img.save(output_path)
+
+    def _empty_cache(self):
+        if self.device.type == "mps":
+            torch.mps.empty_cache()
+        elif self.device.type == "cuda":
+            torch.cuda.empty_cache()
+
+
+# Training class
+class Noise2Noise(Denoiser):
+    def __init__(self, train_dir=None, valid_dir=None, model_dir=None, device=None, max_pairs=None):
+        super().__init__(device=device, model_dir=model_dir)
+
+        if self.model_dir is not None:
+            self.model_dir.mkdir(exist_ok=True)
+
+        self.train_dir = train_dir
+        self.valid_dir = valid_dir
+        self.max_pairs = max_pairs
+
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=0.001)
         self.criterion = nn.MSELoss()
+
+        self.train_losses = []
+        self.valid_losses = []
+
+        # データセットは train() 呼び出し時まで遅延生成する
+        # （推論だけの利用なら train_dir / valid_dir は不要）
+        self.train_loader = None
+        self.valid_loader = None
+
+    def _setup_data(self):
+        if self.train_loader is not None:
+            return
+
+        if self.train_dir is None or self.valid_dir is None:
+            raise ValueError("train_dir and valid_dir are required for training")
 
         # Setup datasets with additional transforms if needed
         additional_transforms = None  # 必要に応じて追加の transforms を定義
 
         try:
-            self.train_dataset = NoisyDataset(train_dir, additional_transforms, max_pairs=max_pairs)
-            self.valid_dataset = NoisyDataset(valid_dir, additional_transforms, max_pairs=max_pairs)
+            train_dataset = NoisyDataset(self.train_dir, additional_transforms, max_pairs=self.max_pairs)
+            valid_dataset = NoisyDataset(self.valid_dir, additional_transforms, max_pairs=self.max_pairs)
         except FileNotFoundError as e:
             print(f"Error initializing datasets: {e}")
             raise
 
         # Setup dataloaders with smaller batch size
         self.train_loader = DataLoader(
-            self.train_dataset,
+            train_dataset,
             batch_size=2,
             shuffle=True,
             num_workers=0,
         )
         self.valid_loader = DataLoader(
-            self.valid_dataset,
+            valid_dataset,
             batch_size=2,
             shuffle=False,
             num_workers=0,
         )
-    def train(self, epochs):
+
+    def train(self, epochs, run_name="fixed_model"):
+        self._setup_data()
+
         best_valid_loss = float('inf')
 
         for epoch in range(epochs):
@@ -215,21 +286,20 @@ class Noise2Noise:
                     print(f'Epoch {epoch+1}/{epochs} [{batch_idx}/{len(self.train_loader)}] '
                             f'Loss: {loss.item():.6f}')
 
-            torch.mps.empty_cache()
+            self._empty_cache()
 
             # Validation
             valid_loss = self.validate()
             print(f'Epoch {epoch+1} Average Train Loss: {train_loss/len(self.train_loader):.6f} '
                     f'Valid Loss: {valid_loss:.6f}')
-            train_losses.append(train_loss / len(self.train_loader))
-            valid_losses.append(valid_loss)
+            self.train_losses.append(train_loss / len(self.train_loader))
+            self.valid_losses.append(valid_loss)
 
             # Save best model
             if valid_loss < best_valid_loss:
                 best_valid_loss = valid_loss
-                self.save_model(model_csv_name + '.pth')
-        self.save_losses_to_csv(model_csv_name + '.csv') # 追記
-
+                self.save_model(run_name + '.pth')
+        self.save_losses_to_csv(run_name + '.csv')
 
     def validate(self):
         self.model.eval()
@@ -247,97 +317,99 @@ class Noise2Noise:
         return valid_loss / len(self.valid_loader)
 
     def save_model(self, filename):
-        save_path = self.model_dir / filename
+        save_path = self._resolve_model_path(filename)
         torch.save({
             'model_state_dict': self.model.state_dict(),
             'optimizer_state_dict': self.optimizer.state_dict(),
         }, save_path)
 
-    def save_losses_to_csv(self, filename): # 追記
-        filepath = self.model_dir / filename # 追記
-        with open(filepath, 'w', newline='') as csvfile: # 追記
-            csvwriter = csv.writer(csvfile) # 追記
-            csvwriter.writerow(['Train Loss', 'Valid Loss']) # 追記
-            for i in range(len(train_losses)): # 追記
-                csvwriter.writerow([train_losses[i], valid_losses[i]]) # 追記
-        print(f'Losses saved to {filename}') # 追記
-
+    def save_losses_to_csv(self, filename):
+        filepath = self._resolve_model_path(filename)
+        with open(filepath, 'w', newline='') as csvfile:
+            csvwriter = csv.writer(csvfile)
+            csvwriter.writerow(['Train Loss', 'Valid Loss'])
+            for i in range(len(self.train_losses)):
+                csvwriter.writerow([self.train_losses[i], self.valid_losses[i]])
+        print(f'Losses saved to {filename}')
 
     def load_model(self, filename):
-        load_path = self.model_dir / filename
-        checkpoint = torch.load(load_path, weights_only=True, map_location=
-                                "cuda" if torch.cuda.is_available()
-                                else "mps" if torch.backends.mps.is_available()
-                                else "cpu"
-                                )  # weights_only=True を追加
-        self.model.load_state_dict(checkpoint['model_state_dict'])
-        self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-
-    def denoise_image(self, input_path, output_path):
-        self.model.eval()
-
-        # 画像の読み込みと変換
-        input_img = Image.open(input_path).convert('RGB')
-        input_tensor = self.transform(input_img).unsqueeze(0).to(self.device)
-
-        # モデルの推論
-        with torch.no_grad():
-            output = self.model(input_tensor)
-
-        # tanh出力 [-1,1] を [0,1] に逆正規化してから保存
-        output = output.squeeze(0).cpu()
-        output = output * 0.5 + 0.5
-        output = output.clamp(0, 1)
-        output_img = transforms.ToPILImage()(output)
-        output_img.save(output_path)
+        checkpoint = super().load_model(filename)
+        if 'optimizer_state_dict' in checkpoint:
+            self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
 
 
+def _build_parser():
+    parser = argparse.ArgumentParser(description="Noise2Noise の学習・推論 CLI")
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    train_parser = subparsers.add_parser("train", help="モデルを学習する")
+    train_parser.add_argument("--train-dir", default="../../Resources/AI/train_data",
+                              help="学習データのディレクトリ")
+    train_parser.add_argument("--valid-dir", default="../../Resources/AI/valid_data",
+                              help="検証データのディレクトリ")
+    train_parser.add_argument("--model-dir", default="../../Resources/AI/model_dir",
+                              help="モデル・損失CSVの保存先ディレクトリ")
+    train_parser.add_argument("--epochs", type=int, default=10)
+    train_parser.add_argument("--max-pairs", type=int, default=200,
+                              help="使用する画像ペア数の上限（0 で無制限）")
+    train_parser.add_argument("--run-name", default="fixed_model",
+                              help="保存するモデル・CSVのファイル名（拡張子なし）")
+    train_parser.add_argument("--device", default=None,
+                              help="cuda / mps / cpu（省略時は自動選択）")
+    train_parser.add_argument("--resume", default=None,
+                              help="学習を再開するモデルファイル（model-dir 内のファイル名かフルパス）")
+
+    denoise_parser = subparsers.add_parser("denoise", help="学習済みモデルでノイズ除去する")
+    denoise_parser.add_argument("--model", required=True,
+                                help="モデルファイル（.pth）のパス")
+    denoise_parser.add_argument("--input", required=True,
+                                help="入力画像ファイル、または jpg を含むディレクトリ")
+    denoise_parser.add_argument("--output", required=True,
+                                help="出力画像ファイル、または出力先ディレクトリ")
+    denoise_parser.add_argument("--device", default=None,
+                                help="cuda / mps / cpu（省略時は自動選択）")
+
+    return parser
 
 
-
-
-# Example usage
-if __name__ == "__main__":
-    # Setup device
-    device = torch.device("mps" if torch.mps.is_available() else "cpu")
-    net = UNet()
-
-    # Initialize trainer
+def _run_train(args):
     trainer = Noise2Noise(
-        train_dir="../../Resources/AI/train_data",
-        valid_dir="../../Resources/AI/valid_data",
-        model_dir="../../Resources/AI/model_dir",
-        device=device,
-        max_pairs=200,
+        train_dir=args.train_dir,
+        valid_dir=args.valid_dir,
+        model_dir=args.model_dir,
+        device=args.device,
+        max_pairs=args.max_pairs if args.max_pairs > 0 else None,
     )
-
-    # Train model
-    trainer.train(epochs=10)
-    # trainer.load_model('8-2_model.pth')
-
-    # Denoise a single image
-    # trainer.denoise_image("../../Resources/Images/19_57_44/001.jpg", "../../Resources/Input and Output/output/001-19_57_44_8.2.jpg")
-
-    params = 0
-    for p in net.parameters():
-        if p.requires_grad:
-            params += p.numel()
-
-    print(params)  # 121898
+    if args.resume:
+        trainer.load_model(args.resume)
+    trainer.train(epochs=args.epochs, run_name=args.run_name)
 
 
-"""
-    img_path = Path("./img")
-    img_path.mkdir(exist_ok=True)
+def _run_denoise(args):
+    denoiser = Denoiser(device=args.device)
+    denoiser.load_model(args.model)
 
-    # グラフの描画
-    plt.figure(figsize=(6, 4)) # 縦方向に少し大きく
-    plt.plot(train_losses, marker='.', label='Train Loss') # train_losses をプロット、ラベルを追加
-    plt.plot(valid_losses, marker='.', label='Valid Loss') # valid_losses をプロット、ラベルを追加
-    plt.xlabel('Epoch') # X軸ラベルを追加
-    plt.ylabel('Loss') # Y軸ラベルを追加
-    plt.title('Training and Validation Loss') # タイトルを追加
-    plt.legend() # 凡例を表示
-    plt.grid(True) # グリッド線を追加
-    plt.savefig("./img/best_loss_graph.png") # ファイル名を変更
-"""
+    input_path = Path(args.input)
+    output_path = Path(args.output)
+
+    if input_path.is_dir():
+        output_path.mkdir(parents=True, exist_ok=True)
+        images = sorted(input_path.glob("*.jpg"))
+        if not images:
+            raise FileNotFoundError(f"No jpg files found in {input_path}")
+        for i, img in enumerate(images, start=1):
+            denoiser.denoise_image(str(img), str(output_path / img.name))
+            print(f"[{i}/{len(images)}] {img.name}")
+    else:
+        if output_path.parent != Path('.'):
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+        denoiser.denoise_image(str(input_path), str(output_path))
+        print(f"Saved to {output_path}")
+
+
+if __name__ == "__main__":
+    cli_args = _build_parser().parse_args()
+    if cli_args.command == "train":
+        _run_train(cli_args)
+    else:
+        _run_denoise(cli_args)

@@ -78,21 +78,30 @@ uv sync
 
 #### 学習（Noise2Noise）
 
-`src/Modules/noise2noise.py` の末尾にある `if __name__ == "__main__":` ブロックで学習できます。  
-学習を実行する場合は、このブロック内の以下のコメントアウトを外してください。
-
-```python
-# trainer.train(epochs=1000)
-```
-
-その後、次のコマンドを実行します。
+`src/Modules/noise2noise.py` はコマンドライン引数でパスやエポック数を指定できます。
+コードの書き換えは不要です。
 
 ```bash
-uv run python src/Modules/noise2noise.py
+uv run python src/Modules/noise2noise.py train \
+  --train-dir "Resources/AI/train_data" \
+  --valid-dir "Resources/AI/valid_data" \
+  --model-dir "Resources/AI/model_dir" \
+  --epochs 10
 ```
 
-※ `noise2noise.py` の `train_dir` / `valid_dir` はサンプル値です。  
-実行ディレクトリとデータ配置に合わせて、実在するパスに変更してから実行してください。
+#### ノイズ除去（推論）
+
+学習済みモデル（`.pth`）があれば、学習データなしで画像のノイズ除去ができます。
+`--input` にフォルダを指定すると jpg を一括処理します。
+
+```bash
+uv run python src/Modules/noise2noise.py denoise \
+  --model "Resources/AI/model_dir/fixed_model.pth" \
+  --input "input.jpg" \
+  --output "denoised.jpg"
+```
+
+オプションの一覧や Python からの使い方など、詳しくは [docs/noise2noise.md](docs/noise2noise.md) を参照してください。
 
 #### 生成（推論）
 
@@ -138,6 +147,7 @@ uv run python src/main/movie_affine.py
 - noise2noise.py
     - Noise2Noise(Noise_to_Noise)を実装したコード
     - U-Netを使用している
+    - 学習・推論ともCLIから実行可能（使い方: [docs/noise2noise.md](docs/noise2noise.md)）
     - [U-Netとは | スキルアップAI Journal](https://www.skillupai.com/blog/tech/segmentation2/)
 - ellipse.py
     - アフィン変換（回転、拡大縮小、平行移動）によって楕円補正を試みたやつ
