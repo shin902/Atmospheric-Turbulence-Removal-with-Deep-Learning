@@ -215,7 +215,7 @@ class Noise2Noise(Denoiser):
         super().__init__(device=device, model_dir=model_dir)
 
         if self.model_dir is not None:
-            self.model_dir.mkdir(exist_ok=True)
+            self.model_dir.mkdir(parents=True, exist_ok=True)
 
         self.train_dir = train_dir
         self.valid_dir = valid_dir
