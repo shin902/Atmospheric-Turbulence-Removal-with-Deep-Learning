@@ -414,7 +414,8 @@ def _run_denoise(args):
 
     if input_path.is_dir():
         output_path.mkdir(parents=True, exist_ok=True)
-        images = sorted(input_path.glob("*.jpg"))
+        image_extensions = {".jpg", ".jpeg"}
+        images = sorted(p for p in input_path.iterdir() if p.suffix.lower() in image_extensions)
         if not images:
             raise FileNotFoundError(f"No jpg files found in {input_path}")
         for i, img in enumerate(images, start=1):
