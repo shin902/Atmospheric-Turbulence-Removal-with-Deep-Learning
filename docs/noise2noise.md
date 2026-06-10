@@ -118,17 +118,14 @@ uv run python src/Modules/noise2noise.py train \
 
 | オプション | デフォルト | 説明 |
 |---|---|---|
-| `--train-dir` | `../../Resources/AI/train_data` | 学習データのフォルダ |
-| `--valid-dir` | `../../Resources/AI/valid_data` | 検証データのフォルダ |
-| `--model-dir` | `../../Resources/AI/model_dir` | モデルとCSVの保存先 |
+| `--train-dir` | `Resources/AI/train_data`（リポジトリルート基準） | 学習データのフォルダ |
+| `--valid-dir` | `Resources/AI/valid_data`（リポジトリルート基準） | 検証データのフォルダ |
+| `--model-dir` | `Resources/AI/model_dir`（リポジトリルート基準） | モデルとCSVの保存先 |
 | `--epochs` | `10` | 学習エポック数 |
 | `--max-pairs` | `200` | 使う画像ペア数の上限。`0` で無制限 |
 | `--run-name` | `fixed_model` | 保存ファイル名（拡張子なし） |
 | `--device` | 自動選択 | `cuda` / `mps` / `cpu` |
 | `--resume` | なし | 再開元のモデルファイル |
-
-> ⚠️ デフォルトのパスは `src/Modules` フォルダから実行した場合の相対パスです。
-> リポジトリのルートから実行する場合は、上の例のように `--train-dir` などを明示的に指定してください。
 
 ---
 

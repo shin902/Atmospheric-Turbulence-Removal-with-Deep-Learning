@@ -9,6 +9,9 @@ from PIL import Image
 from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms
 
+# リポジトリのルートディレクトリ（実行時のカレントディレクトリに依存しないデフォルトパス算出用）
+_PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
 
 def resolve_device(device=None):
     """device 未指定なら cuda → mps → cpu の順で自動選択する"""
@@ -360,11 +363,11 @@ def _build_parser():
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     train_parser = subparsers.add_parser("train", help="モデルを学習する")
-    train_parser.add_argument("--train-dir", default="../../Resources/AI/train_data",
+    train_parser.add_argument("--train-dir", default=str(_PROJECT_ROOT / "Resources/AI/train_data"),
                               help="学習データのディレクトリ")
-    train_parser.add_argument("--valid-dir", default="../../Resources/AI/valid_data",
+    train_parser.add_argument("--valid-dir", default=str(_PROJECT_ROOT / "Resources/AI/valid_data"),
                               help="検証データのディレクトリ")
-    train_parser.add_argument("--model-dir", default="../../Resources/AI/model_dir",
+    train_parser.add_argument("--model-dir", default=str(_PROJECT_ROOT / "Resources/AI/model_dir"),
                               help="モデル・損失CSVの保存先ディレクトリ")
     train_parser.add_argument("--epochs", type=int, default=10)
     train_parser.add_argument("--max-pairs", type=int, default=200,
