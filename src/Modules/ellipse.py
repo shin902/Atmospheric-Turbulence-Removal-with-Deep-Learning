@@ -29,9 +29,6 @@ def detect_ellipse(image):
     contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
     if len(contours) > 0:
-        # デバッグ用コンテナ
-        debug_image = cv2.cvtColor(binary, cv2.COLOR_GRAY2BGR)
-
         # 最大の輪郭を見つける
         largest_contour = max(contours, key=cv2.contourArea)
 
@@ -50,8 +47,6 @@ def detect_ellipse(image):
         else:
             print(f"輪郭の点数が不足しています（{len(largest_contour)} < 5点）")
 
-    # デバッグ画像を表示
-    cv2.imshow('Debug Image', debug_image)
     return None, None, None
 
 def ellipse_to_circle(image_path, out_path=None):
@@ -71,7 +66,7 @@ def ellipse_to_circle(image_path, out_path=None):
 
     if center is None:
         print("楕円検出に失敗しました")
-        return image, image, (None, None, None)
+        return None
 
     # 楕円の軸
     major_axis, minor_axis = axes

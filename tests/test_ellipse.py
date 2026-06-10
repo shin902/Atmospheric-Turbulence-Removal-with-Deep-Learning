@@ -28,6 +28,10 @@ class TestDetectEllipse:
         center, axes, angle = detect_ellipse(image)
         assert center is not None
 
+    def test_輪郭がない画像はNoneを返す(self):
+        image = np.zeros((100, 100, 3), dtype=np.uint8)
+        assert detect_ellipse(image) == (None, None, None)
+
 
 class TestEllipseToCircle:
     def test_楕円が真円に近づく(self, tmp_path):
@@ -50,4 +54,10 @@ class TestEllipseToCircle:
 
     def test_読み込めないパスはNoneを返す(self, tmp_path):
         result = ellipse_to_circle(str(tmp_path / "missing.jpg"))
+        assert result is None
+
+    def test_楕円検出に失敗したらNoneを返す(self, tmp_path):
+        input_path = tmp_path / "black.jpg"
+        cv2.imwrite(str(input_path), np.zeros((100, 100, 3), dtype=np.uint8))
+        result = ellipse_to_circle(str(input_path))
         assert result is None
