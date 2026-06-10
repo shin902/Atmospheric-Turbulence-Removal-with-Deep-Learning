@@ -261,6 +261,8 @@ class Noise2Noise(Denoiser):
         )
 
     def train(self, epochs, run_name="fixed_model"):
+        if self.model_dir is None:
+            raise ValueError("model_dir is required for training")
         self._setup_data()
 
         best_valid_loss = float('inf')
