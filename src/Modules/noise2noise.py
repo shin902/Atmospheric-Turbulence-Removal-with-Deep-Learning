@@ -346,6 +346,15 @@ class Noise2Noise(Denoiser):
         self.valid_losses = list(checkpoint.get('valid_losses', []))
 
 
+def _run_name_type(value):
+    """--run-name はファイル名のみを受け付け、パス区切りを含む値は拒否する"""
+    if len(Path(value).parts) > 1:
+        raise argparse.ArgumentTypeError(
+            f"--run-name にパス区切りを含めることはできません: {value!r}"
+        )
+    return value
+
+
 def _build_parser():
     parser = argparse.ArgumentParser(description="Noise2Noise の学習・推論 CLI")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -360,8 +369,8 @@ def _build_parser():
     train_parser.add_argument("--epochs", type=int, default=10)
     train_parser.add_argument("--max-pairs", type=int, default=200,
                               help="使用する画像ペア数の上限（0 で無制限）")
-    train_parser.add_argument("--run-name", default="fixed_model",
-                              help="保存するモデル・CSVのファイル名（拡張子なし）")
+    train_parser.add_argument("--run-name", default="fixed_model", type=_run_name_type,
+                              help="保存するモデル・CSVのファイル名（拡張子なし、パス区切り不可）")
     train_parser.add_argument("--device", default=None,
                               help="cuda / mps / cpu（省略時は自動選択）")
     train_parser.add_argument("--resume", default=None,
